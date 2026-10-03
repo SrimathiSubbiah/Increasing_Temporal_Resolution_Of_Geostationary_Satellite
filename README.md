@@ -2,127 +2,153 @@
 
 ## Learning the Missing Moment Between Satellite Observations
 
-A deep learning framework for generating intermediate geostationary satellite imagery from consecutive GOES-16 observations.
+<p align="center">
+  <strong>GOES-16</strong> · <strong>Temporal Super-Resolution</strong> · <strong>Deep Learning</strong> · <strong>Remote Sensing</strong>
+</p>
 
-This project investigates whether machine learning can reconstruct the atmospheric state between two satellite observations, effectively increasing the temporal resolution of geostationary satellite data without requiring additional satellite scans.
+<p align="center">
+  A deep learning framework for reconstructing intermediate satellite observations from surrounding GOES-16 imagery.
+</p>
 
 ---
 
 ## Overview
 
-Geostationary satellites continuously observe the Earth, but satellite imagery is still available at discrete time intervals. Atmospheric systems such as clouds can evolve significantly between these observations.
+Geostationary satellites provide continuous monitoring of atmospheric systems, but observations are still acquired at discrete time intervals. Rapidly evolving cloud structures can change significantly between two available observations.
 
-This project addresses the problem of **temporal super-resolution**:
+This project investigates whether the **missing intermediate satellite observation** can be reconstructed from the observations immediately before and after it.
 
-> Given two satellite observations at time (t) and (t+2), can we reconstruct the missing observation at (t+1)?
+Given two observations at time \(t\) and \(t+2\), the system estimates the missing observation at \(t+1\):
 
-Instead of simply averaging the two available frames, the proposed approach combines:
+```text
+        Observed                         Observed
+        Frame t                          Frame t+2
+           │                                │
+           │                                │
+           └──────────────┬─────────────────┘
+                          │
+                          ▼
+                  Missing Frame t+1
+                    Reconstructed
+```
 
-* TV-L1 optical-flow-based warping
-* Multi-channel GOES-16 satellite observations
+The proposed approach combines:
+
+* GOES-16 ABI Band 13 and Band 9 observations
+* TV-L1 optical-flow-based motion estimation
 * U-Net-based learned refinement
 * Residual prediction
 * Cloud detection evaluation
-* Downstream cloud-motion tracking evaluation
+* Downstream cloud-motion tracking
 
-The system is evaluated using GOES-16 ABI Band 13 and Band 9 observations.
-
----
-
-## Problem Statement
-
-Geostationary satellite observations provide frequent monitoring of weather systems, but the available temporal sampling can still leave gaps in rapidly evolving atmospheric phenomena.
-
-Traditional interpolation methods may produce blurry or physically inconsistent intermediate frames.
-
-This project explores a learned reconstruction pipeline that uses surrounding satellite observations to estimate the missing intermediate frame while preserving important cloud structures.
+The objective is not only to produce a visually plausible intermediate frame, but also to determine whether the reconstructed frame retains information useful for downstream atmospheric analysis.
 
 ---
 
-## Project Objective
+# 1. Motivation
 
-The primary objective is to increase the effective temporal resolution of GOES-16 satellite imagery by reconstructing an intermediate observation between two consecutive frames.
+Satellite observations represent the atmosphere as a sequence of discrete snapshots:
 
-The project evaluates whether the generated frames are useful not only at the image level, but also for downstream atmospheric analysis.
+```text
+t₀ ───────────── t₁ ───────────── t₂
+●                 ●                 ●
+```
 
-### The central question
+When an observation is unavailable:
 
-**Can a learned model reconstruct a physically meaningful intermediate satellite frame better than conventional interpolation methods?**
+```text
+t₀ ─────────────────────────────── t₂
+●                                 ●
+                ?
+                │
+                ▼
+          Missing t₁
+```
 
----
+A simple interpolation method may estimate the missing frame, but cloud structures can undergo complex motion and deformation between observations.
 
-# System Architecture
+This motivates a learned temporal reconstruction approach that combines:
 
-```mermaid
-flowchart LR
-
-A[GOES-16 Frame at t] --> C[Frame Preparation]
-B[GOES-16 Frame at t+2] --> C
-
-C --> D[Band 13 + Band 9]
-D --> E[TV-L1 Optical Flow]
-E --> F[Warped Intermediate Frame]
-
-A --> G[6-Channel Input]
-B --> G
-F --> G
-
-G --> H[U-Net Refinement Network]
-
-H --> I[Residual Correction]
-I --> J[Predicted Frame at t+1]
-
-J --> K[Image Quality Evaluation]
-J --> L[Cloud Detection]
-J --> M[Cloud Tracking]
-J --> N[Physical Consistency]
+```text
+Motion Estimation
+       +
+Learned Refinement
+       ↓
+Intermediate Satellite Reconstruction
 ```
 
 ---
 
-# Core Idea
+# 2. Problem Statement
 
-The model does not attempt to generate the missing frame entirely from scratch.
+The project addresses the following problem:
 
-Instead, the pipeline first estimates the intermediate position using optical flow and then allows a neural network to learn the remaining correction.
+> Given satellite observations before and after a missing time step, reconstruct the intermediate observation while preserving spatial structure and information relevant to downstream cloud analysis.
 
-### Input
-
-The U-Net receives six channels:
+The reconstruction is evaluated at multiple levels:
 
 ```text
-Warped Intermediate Frame
-        +
-Frame at t
-        +
-Frame at t+2
+Reconstructed Frame
+        │
+        ├── Image Quality
+        │      ├── MSE
+        │      ├── PSNR
+        │      └── SSIM
+        │
+        ├── Cloud Detection
+        │      ├── Precision
+        │      ├── Recall
+        │      ├── F1
+        │      └── Accuracy
+        │
+        └── Cloud Tracking
+               ├── Mean Error
+               ├── Median Error
+               └── P90 Error
 ```
 
-Each satellite frame contains:
+---
+
+# 3. Proposed Approach
+
+The system follows a two-stage reconstruction process.
+
+### Stage 1 — Motion-Based Initialization
+
+TV-L1 optical flow is used to estimate motion between the available satellite observations and generate an initial intermediate frame.
+
+### Stage 2 — Learned Refinement
+
+A compact U-Net receives the warped intermediate frame together with the two surrounding observations and learns a residual correction.
 
 ```text
-Band 13
-Band 9
+GOES-16 Frame t
+       │
+       │
+       ├─────────────────────┐
+       │                     │
+       ▼                     │
+GOES-16 Frame t+2            │
+       │                     │
+       └──────────┬──────────┘
+                  │
+                  ▼
+          TV-L1 Optical Flow
+                  │
+                  ▼
+       Warped Intermediate Frame
+                  │
+                  ▼
+          U-Net Refinement
+                  │
+                  ▼
+          Learned Residual
+                  │
+                  ▼
+       Reconstructed Frame t+1
 ```
 
-Therefore:
-
-```text
-2 channels × 3 frames = 6 input channels
-```
-
-### Output
-
-The network predicts:
-
-```text
-Band 13
-Band 9
-```
-
-for the missing intermediate frame.
-
-The final prediction uses residual refinement:
+The final prediction is formed as:
 
 ```text
 Final Prediction
@@ -132,60 +158,161 @@ Warped Intermediate
 Learned Residual
 ```
 
-This allows the network to focus on correcting errors in the initial optical-flow estimate rather than learning the complete transformation from the beginning.
+---
+
+# 4. System Architecture
+
+```mermaid
+flowchart LR
+
+    A["GOES-16 Frame t"] --> C["Frame Preparation"]
+    B["GOES-16 Frame t+2"] --> C
+
+    C --> D["Band 13 + Band 9"]
+
+    D --> E["TV-L1 Optical Flow"]
+    E --> F["Warped Intermediate Frame"]
+
+    A --> G["6-Channel Input"]
+    B --> G
+    F --> G
+
+    G --> H["U-Net Refinement"]
+
+    H --> I["Residual Correction"]
+
+    I --> J["Reconstructed Frame t+1"]
+
+    J --> K["PSNR / SSIM"]
+    J --> L["Cloud Detection"]
+    J --> M["Cloud Tracking"]
+```
 
 ---
 
-# U-Net Architecture
+# 5. U-Net Architecture
+
+The main model is a compact U-Net designed to refine the motion-based intermediate estimate.
+
+Each satellite frame contains:
+
+```text
+Band 13
+Band 9
+```
+
+The network receives three frames:
+
+```text
+Warped Intermediate
+Frame t
+Frame t+2
+```
+
+Therefore:
+
+```text
+3 frames × 2 channels = 6 input channels
+```
+
+The output contains:
+
+```text
+Band 13
+Band 9
+```
+
+### Architecture
 
 ```mermaid
 flowchart TD
 
-A[Input<br/>6 Channels<br/>256 × 256]
+    A["Input<br>6 Channels<br>256 × 256"]
 
-A --> B[Encoder Block 1<br/>32 Channels]
-B --> C[Max Pool]
+    A --> B["Encoder 1<br>32 Channels"]
+    B --> C["Downsampling"]
 
-C --> D[Encoder Block 2<br/>64 Channels]
-D --> E[Max Pool]
+    C --> D["Encoder 2<br>64 Channels"]
+    D --> E["Downsampling"]
 
-E --> F[Encoder Block 3<br/>128 Channels]
-F --> G[Max Pool]
+    E --> F["Encoder 3<br>128 Channels"]
+    F --> G["Downsampling"]
 
-G --> H[Bottleneck<br/>256 Channels]
+    G --> H["Bottleneck<br>256 Channels"]
 
-H --> I[Decoder Block<br/>128 Channels]
-I --> J[Skip Connection]
+    H --> I["Decoder<br>128 Channels"]
+    F -. "Skip Connection" .-> I
 
-J --> K[Decoder Block<br/>64 Channels]
-K --> L[Skip Connection]
+    I --> J["Decoder<br>64 Channels"]
+    D -. "Skip Connection" .-> J
 
-L --> M[Decoder Block<br/>32 Channels]
+    J --> K["Decoder<br>32 Channels"]
+    B -. "Skip Connection" .-> K
 
-M --> N[Output<br/>2 Channels]
+    K --> L["2-Channel Output"]
 
-N --> O[Residual Refinement]
+    L --> M["Residual Addition"]
+
+    M --> N["Reconstructed Frame"]
 ```
 
-The implementation uses a compact U-Net with:
+### Architecture Summary
 
-* 3 encoder stages
-* 256-channel bottleneck
-* Skip connections
-* 3 decoder stages
-* 2-channel output
-* Residual refinement
+| Component           | Configuration |
+| ------------------- | ------------- |
+| Input               | 6 channels    |
+| Output              | 2 channels    |
+| Input Resolution    | 256 × 256     |
+| Encoder Channels    | 32 → 64 → 128 |
+| Bottleneck          | 256           |
+| Decoder Channels    | 128 → 64 → 32 |
+| Skip Connections    | Yes           |
+| Residual Refinement | Yes           |
 
 ---
 
-# Dataset
+# 6. Data Pipeline
 
-The experiments use GOES-16 ABI Level-1b Radiance observations.
+```mermaid
+flowchart LR
+
+    A["GOES-16 ABI Data"]
+    --> B["Match Band 13 + Band 9"]
+
+    B --> C["Radiance → Brightness Temperature"]
+
+    C --> D["Normalization"]
+
+    D --> E["Temporal Triplets"]
+
+    E --> F["256 × 256 Patch Extraction"]
+
+    F --> G["Quality Filtering"]
+
+    G --> H["Chronological Train / Validation / Test Split"]
+```
+
+The preprocessing pipeline:
+
+1. Matches Band 13 and Band 9 observations.
+2. Converts radiance values to brightness temperature.
+3. Normalizes the channels.
+4. Constructs consecutive temporal triplets.
+5. Extracts 256 × 256 spatial patches.
+6. Removes NaN-containing and near-uniform patches.
+7. Creates chronological dataset partitions.
+
+---
+
+# 7. Dataset
+
+The experiments use GOES-16 ABI Level-1b Radiance observations from **1 June 2024**.
 
 | Property            | Configuration                  |
 | ------------------- | ------------------------------ |
 | Satellite           | GOES-16                        |
 | Instrument          | Advanced Baseline Imager (ABI) |
+| Product             | ABI Level-1b Radiance          |
 | Date                | 2024-06-01                     |
 | Bands               | Band 13 and Band 9             |
 | Data Source         | NOAA AWS / goes2go             |
@@ -196,46 +323,23 @@ The experiments use GOES-16 ABI Level-1b Radiance observations.
 | Validation Triplets | 3,159                          |
 | Test Triplets       | 3,207                          |
 
-Each training example consists of three temporally consecutive observations:
+### Temporal Triplet
+
+Each sample consists of three consecutive observations:
 
 ```text
-Frame t       Frame t+1       Frame t+2
-   |              |               |
-   |              |               |
-   +--------------+---------------+
-          Prediction Target
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Frame t   │      │ Frame t+1   │      │ Frame t+2   │
+│             │      │             │      │             │
+│    INPUT    │      │   TARGET    │      │    INPUT    │
+└─────────────┘      └─────────────┘      └─────────────┘
 ```
 
-The middle frame is used as the ground-truth target during training.
+The middle observation is used as the ground-truth target during training and evaluation.
 
 ---
 
-# Data Preparation Pipeline
-
-```mermaid
-flowchart LR
-
-A[GOES-16 ABI Data]
---> B[Match Band 13 and Band 9]
-
-B --> C[Convert Radiance<br/>to Brightness Temperature]
-
-C --> D[Normalize Channels]
-
-D --> E[Create Temporal Triplets]
-
-E --> F[Extract 256 × 256 Patches]
-
-F --> G[Remove NaN / Near-Uniform Patches]
-
-G --> H[Chronological Train / Validation / Test Split]
-```
-
----
-
-# Experimental Setup
-
-The main U-Net model was trained using:
+# 8. Experimental Setup
 
 | Parameter               |             Value |
 | ----------------------- | ----------------: |
@@ -245,9 +349,11 @@ The main U-Net model was trained using:
 | Batch Size              |                16 |
 | Epochs                  |                14 |
 | Optimizer               |              Adam |
-| Initial Learning Rate   |          1 × 10⁻⁴ |
+| Learning Rate           |          1 × 10⁻⁴ |
 | Loss Function           |           L1 Loss |
-| LR Scheduler            | ReduceLROnPlateau |
+| Scheduler               | ReduceLROnPlateau |
+| Scheduler Factor        |               0.5 |
+| Scheduler Patience      |                 3 |
 | Input Channels          |                 6 |
 | Output Channels         |                 2 |
 
@@ -255,13 +361,13 @@ Training requires a CUDA-enabled GPU.
 
 ---
 
-# Models Compared
+# 9. Models Compared
 
-The project evaluates three learned architectures:
+The project evaluates three learned architectures.
 
 ### U-Net
 
-A compact encoder-decoder network with skip connections and residual refinement.
+A compact encoder-decoder architecture with skip connections and residual refinement.
 
 ### ResUNet
 
@@ -269,37 +375,40 @@ A U-Net variant incorporating residual learning blocks.
 
 ### Attention U-Net
 
-A U-Net variant incorporating attention mechanisms into the feature fusion process.
+A U-Net variant incorporating attention mechanisms into feature fusion.
 
-These models are compared against conventional interpolation approaches.
+```text
+                    Temporal Reconstruction
+                             │
+             ┌───────────────┼───────────────┐
+             │               │               │
+             ▼               ▼               ▼
+           U-Net          ResUNet      Attention U-Net
+```
 
 ---
 
-# Baselines
+# 10. Baselines
 
-Two non-learned approaches are evaluated:
+## Frame Averaging
 
-### Frame Averaging
-
-The intermediate frame is estimated by averaging the two surrounding observations.
+The simplest interpolation baseline estimates the missing frame using:
 
 ```text
 Prediction = (Frame t + Frame t+2) / 2
 ```
 
-### TV-L1 Optical Flow
+## TV-L1 Optical Flow
 
-Motion between the two surrounding frames is estimated using optical flow, followed by warping to approximate the intermediate state.
+TV-L1 optical flow estimates motion between the available observations and uses the estimated motion to generate an intermediate frame.
 
-The learned models then build upon this motion-aware initialization.
+The learned models use motion-based information as part of the reconstruction process and learn additional corrections.
 
 ---
 
-# Results
+# 11. Quantitative Results
 
-## Image Reconstruction
-
-### Band 13
+## 11.1 Band 13 Reconstruction
 
 | Model           |        PSNR (dB) |                SSIM |
 | --------------- | ---------------: | ------------------: |
@@ -307,7 +416,29 @@ The learned models then build upon this motion-aware initialization.
 | ResUNet         |     37.01 ± 3.11 |     0.9440 ± 0.0254 |
 | Attention U-Net |     36.71 ± 3.09 |     0.9443 ± 0.0248 |
 
-### Band 9
+### Band 13 PSNR
+
+```mermaid
+xychart-beta
+    title "Band 13 PSNR Comparison"
+    x-axis ["U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "PSNR (dB)" 35 --> 39
+    bar [37.29, 37.01, 36.71]
+```
+
+### Band 13 SSIM
+
+```mermaid
+xychart-beta
+    title "Band 13 SSIM Comparison"
+    x-axis ["U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "SSIM" 0.90 --> 0.97
+    bar [0.9507, 0.9440, 0.9443]
+```
+
+---
+
+# 12. Band 9 Reconstruction
 
 | Model           |        PSNR (dB) |                SSIM |
 | --------------- | ---------------: | ------------------: |
@@ -315,13 +446,31 @@ The learned models then build upon this motion-aware initialization.
 | ResUNet         |     40.39 ± 3.50 |     0.9617 ± 0.0201 |
 | Attention U-Net |     39.66 ± 3.53 |     0.9590 ± 0.0215 |
 
-The U-Net configuration achieved the highest reported PSNR and SSIM among the evaluated learned models.
+### Band 9 PSNR
+
+```mermaid
+xychart-beta
+    title "Band 9 PSNR Comparison"
+    x-axis ["U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "PSNR (dB)" 38 --> 42
+    bar [40.79, 40.39, 39.66]
+```
+
+### Band 9 SSIM
+
+```mermaid
+xychart-beta
+    title "Band 9 SSIM Comparison"
+    x-axis ["U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "SSIM" 0.94 --> 0.98
+    bar [0.9673, 0.9617, 0.9590]
+```
 
 ---
 
-# Cloud Detection Results
+# 13. Cloud Detection Evaluation
 
-The reconstructed frames were also evaluated for cloud detection performance.
+The reconstructed frames are evaluated for cloud detection performance.
 
 | Method          |  Precision |     Recall |   F1 Score |   Accuracy |
 | --------------- | ---------: | ---------: | ---------: | ---------: |
@@ -331,13 +480,23 @@ The reconstructed frames were also evaluated for cloud detection performance.
 | ResUNet         |     0.9396 |     0.9609 |     0.9501 |     0.9958 |
 | Attention U-Net |     0.9526 |     0.9507 |     0.9516 |     0.9959 |
 
+### Cloud Detection F1 Score
+
+```mermaid
+xychart-beta
+    title "Cloud Detection F1 Score"
+    x-axis ["Frame Averaging", "TV-L1", "U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "F1 Score" 0.80 --> 1.00
+    bar [0.9197, 0.8306, 0.9557, 0.9501, 0.9516]
+```
+
 ---
 
-# Downstream Cloud Tracking
+# 14. Downstream Cloud Tracking
 
-Image quality alone does not determine whether a reconstructed satellite frame is useful.
+Image reconstruction metrics alone do not determine whether the generated frame is useful for atmospheric analysis.
 
-Therefore, the project evaluates the reconstructed frames using cloud-motion tracking.
+The reconstructed frames are therefore evaluated using downstream cloud-motion tracking.
 
 | Method          | Mean Error (px) | Median Error (px) | P90 Error (px) |
 | --------------- | --------------: | ----------------: | -------------: |
@@ -347,96 +506,92 @@ Therefore, the project evaluates the reconstructed frames using cloud-motion tra
 | ResUNet         |            3.05 |              0.88 |           6.89 |
 | Attention U-Net |            3.42 |              0.80 |           7.39 |
 
-The downstream evaluation provides an additional test of whether the reconstructed imagery preserves information relevant to cloud motion.
+Lower tracking error indicates smaller disagreement with the reference cloud-motion measurement.
 
----
+### Mean Cloud-Tracking Error
 
-# Results at a Glance
-
-```text
-U-Net Performance
-
-Band 13 PSNR
-37.29 dB
-
-Band 13 SSIM
-0.9507
-
-Cloud Detection F1
-0.9557
-
-Mean Cloud Tracking Error
-2.98 px
+```mermaid
+xychart-beta
+    title "Mean Cloud-Tracking Error"
+    x-axis ["Frame Averaging", "TV-L1", "U-Net", "ResUNet", "Attention U-Net"]
+    y-axis "Mean Error (pixels)" 0 --> 20
+    bar [9.14, 17.39, 2.98, 3.05, 3.42]
 ```
 
 ---
 
-# Visual Results
+# 15. Results at a Glance
 
-Add the generated visual comparison from the repository here:
+| Metric                      | U-Net Result |
+| --------------------------- | -----------: |
+| Band 13 PSNR                | **37.29 dB** |
+| Band 13 SSIM                |   **0.9507** |
+| Band 9 PSNR                 | **40.79 dB** |
+| Band 9 SSIM                 |   **0.9673** |
+| Cloud Detection F1          |   **0.9557** |
+| Cloud Detection Accuracy    |   **0.9963** |
+| Mean Cloud Tracking Error   |  **2.98 px** |
+| Median Cloud Tracking Error |  **0.67 px** |
+| P90 Cloud Tracking Error    |  **6.55 px** |
 
-```markdown
-![Satellite Frame Interpolation Results](outputs/figures/demo_output.png)
-```
+---
 
-For the multi-model comparison:
+# 16. Visual Results
 
-```markdown
+## Reconstruction Example
+
+The repository contains a generated visual comparison of the intermediate-frame reconstruction.
+
+![Satellite Reconstruction](outputs/figures/demo_output.png)
+
+---
+
+## Multi-Model Comparison
+
+The project also includes a visual comparison across the evaluated reconstruction models.
+
 ![Model Comparison](outputs/figures/compare_all_models_visual.png)
-```
-
-These visualizations show the relationship between:
-
-```text
-Frame t
-   ↓
-Ground Truth t+1
-   ↓
-Frame t+2
-   ↓
-Baseline / Optical Flow
-   ↓
-Learned Reconstruction
-```
 
 ---
 
-# End-to-End Workflow
+# 17. End-to-End Workflow
 
 ```mermaid
 flowchart TD
 
-A[GOES-16 Raw Data]
---> B[Band Matching]
+    A["GOES-16 Raw Observations"]
+    --> B["Band 13 + Band 9 Matching"]
 
-B --> C[Brightness Temperature Conversion]
+    B --> C["Brightness Temperature Conversion"]
 
-C --> D[Temporal Triplet Construction]
+    C --> D["Normalization"]
 
-D --> E[Patch Extraction]
+    D --> E["Temporal Triplet Construction"]
 
-E --> F[Normalization]
+    E --> F["Patch Extraction"]
 
-F --> G[Optical Flow Initialization]
+    F --> G["Train / Validation / Test"]
 
-G --> H[6-Channel U-Net Input]
+    G --> H["TV-L1 Motion Estimation"]
 
-H --> I[Learned Residual Refinement]
+    H --> I["Warped Intermediate"]
 
-I --> J[Intermediate Satellite Frame]
+    I --> J["6-Channel U-Net"]
 
-J --> K[PSNR / SSIM]
+    J --> K["Residual Refinement"]
 
-J --> L[Cloud Detection]
+    K --> L["Reconstructed Frame"]
 
-J --> M[Cloud Tracking]
+    L --> M["PSNR / SSIM"]
 
-J --> N[Physical Consistency]
+    L --> N["Cloud Detection"]
+
+    L --> O["Cloud Tracking"]
 ```
 
 ---
 
-# Repository Structure
+# 18. Repository Structure
 
 ```text
 Increasing_Temporal_Resolution_Of_Geostationary_Satellite/
@@ -453,248 +608,302 @@ Increasing_Temporal_Resolution_Of_Geostationary_Satellite/
 ├── outputs/
 │   └── figures/
 │
-├── demo.py
 ├── train.py
 ├── train_resunet.py
 ├── train_attention_unet.py
+├── demo.py
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-# Installation
+# 19. Implementation
 
-Clone the repository:
+## Data Preparation
 
-```bash
-git clone https://github.com/SrimathiSubbiah/Increasing_Temporal_Resolution_Of_Geostationary_Satellite.git
-
-cd Increasing_Temporal_Resolution_Of_Geostationary_Satellite
-```
-
-Install the required dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-# Data Preparation
-
-The data preparation pipeline is implemented in:
+The temporal triplet construction pipeline is implemented in:
 
 ```text
 data/build_triplets.py
 ```
 
-The script:
+The script performs:
 
-1. Matches GOES-16 Band 13 and Band 9 observations.
-2. Converts radiance values to brightness temperature.
-3. Normalizes the satellite channels.
-4. Constructs three-frame temporal sequences.
-5. Extracts 256 × 256 patches.
-6. Removes invalid and near-uniform patches.
-7. Creates chronological train, validation, and test splits.
+* Band 13 / Band 9 temporal matching
+* Radiance-to-brightness-temperature conversion
+* Normalization
+* Temporal triplet construction
+* Patch extraction
+* NaN filtering
+* Near-uniform patch filtering
+* Chronological dataset splitting
 
 ---
 
-# Training
+## Training
 
-The main U-Net model can be trained using:
+### U-Net
 
 ```bash
 python train.py
 ```
 
-The repository also contains training scripts for:
+### ResUNet
 
 ```bash
 python train_resunet.py
 ```
 
-and
+### Attention U-Net
 
 ```bash
 python train_attention_unet.py
 ```
 
-The training configuration uses the parameters described in the experimental setup above.
-
 ---
 
-# Evaluation
-
-The trained model can be evaluated using:
+## Evaluation
 
 ```bash
 python eval/evaluate_model.py
 ```
 
-The evaluation pipeline computes:
-
-* MSE
-* PSNR
-* SSIM
-* Cloud detection metrics
-* Downstream cloud tracking performance
-* Additional physical consistency measures
-
-The test configuration evaluates 3,207 test triplets.
+The evaluation pipeline calculates reconstruction metrics and supports the downstream analysis used in the project.
 
 ---
 
-# Demo
-
-Run the demonstration using:
+## Demo
 
 ```bash
 python demo.py
 ```
 
-The demo generates visual comparisons between the input observations, reconstructed intermediate frame, and reference frame.
+The demo generates visual comparisons between the available satellite observations, reconstructed intermediate frame, and reference frame.
 
 ---
 
-# Why This Approach?
+# 20. Installation
 
-A simple interpolation method can estimate an intermediate frame numerically, but atmospheric structures are not necessarily linear in time.
+Clone the repository:
 
-The proposed pipeline therefore combines two ideas:
-
-```text
-Motion Estimation
-       +
-Learned Refinement
-       =
-Intermediate Satellite Reconstruction
+```bash
+git clone https://github.com/SrimathiSubbiah/Increasing_Temporal_Resolution_Of_Geostationary_Satellite.git
+cd Increasing_Temporal_Resolution_Of_Geostationary_Satellite
 ```
 
-Optical flow provides an initial estimate of where structures move.
+Install dependencies:
 
-The neural network then learns how to correct the remaining spatial and temporal differences.
+```bash
+pip install -r requirements.txt
+```
 
-This makes the reconstruction problem a **refinement problem rather than a complete image-generation problem**.
+### Main Dependencies
+
+```text
+Python
+PyTorch
+NumPy
+Pandas
+Matplotlib
+OpenCV
+Xarray
+NetCDF4
+scikit-image
+torchvision
+goes2go
+```
 
 ---
 
-# Key Findings
+# 21. Technology Stack
 
-The experiments show that:
-
-* The learned U-Net reconstruction achieves 37.29 dB PSNR and 0.9507 SSIM on Band 13.
-* Band 9 reconstruction reaches 40.79 dB PSNR and 0.9673 SSIM.
-* The U-Net achieves a cloud detection F1 score of 0.9557.
-* The U-Net achieves a mean downstream cloud-tracking error of 2.98 pixels.
-* Learned refinement improves the evaluated downstream cloud-tracking performance compared with the tested non-learned baselines.
-* The results demonstrate the potential of learned temporal interpolation for increasing the effective temporal resolution of geostationary satellite observations on the evaluated dataset.
+| Category          | Technology                        |
+| ----------------- | --------------------------------- |
+| Programming       | Python                            |
+| Deep Learning     | PyTorch                           |
+| Satellite Data    | GOES-16 ABI                       |
+| Data Access       | NOAA AWS / goes2go                |
+| Image Processing  | OpenCV / scikit-image             |
+| Data Processing   | NumPy / Pandas / Xarray           |
+| Motion Estimation | TV-L1 Optical Flow                |
+| Visualization     | Matplotlib                        |
+| Models            | U-Net / ResUNet / Attention U-Net |
 
 ---
 
-# Limitations
+# 22. What Makes the Project Different?
+
+The project evaluates temporal reconstruction beyond pixel-level similarity.
+
+Instead of stopping at:
+
+```text
+Input → Model → Image
+```
+
+the evaluation continues:
+
+```text
+Input Observations
+        ↓
+Temporal Reconstruction
+        ↓
+Image Quality
+        ↓
+Cloud Detection
+        ↓
+Cloud Motion Tracking
+```
+
+This provides multiple perspectives on whether the reconstructed frame retains useful atmospheric information.
+
+---
+
+# 23. Key Findings
+
+The reported experiments show that:
+
+* The U-Net achieves **37.29 dB PSNR** and **0.9507 SSIM** on Band 13.
+* The U-Net achieves **40.79 dB PSNR** and **0.9673 SSIM** on Band 9.
+* The U-Net achieves a reported **cloud detection F1 score of 0.9557**.
+* The U-Net achieves a reported **mean cloud-tracking error of 2.98 pixels**.
+* Learned reconstruction provides a motion-aware alternative to simple frame averaging.
+* The reconstructed frames retain information relevant to the evaluated cloud-detection and cloud-tracking tasks.
+
+These findings apply to the evaluated GOES-16 dataset and experimental configuration.
+
+---
+
+# 24. Limitations
 
 The current study has several limitations:
 
 * The experiments use observations from a single day.
 * The dataset is based on GOES-16 observations.
 * Only Band 13 and Band 9 are used.
-* Training uses a limited subset of the available training samples.
-* The current model is designed for 256 × 256 patches.
-* Further validation across different weather systems, seasons, and geographic conditions is required.
-
-These limitations should be considered when interpreting the reported results.
+* The model operates on 256 × 256 patches.
+* The main training configuration uses a subset of the available training triplets.
+* Broader validation across different weather systems, seasons, and geographic conditions is required.
 
 ---
 
-# Future Work
+# 25. Future Work
 
 Potential extensions include:
 
-* Training on longer multi-day or multi-season datasets.
-* Incorporating additional GOES-16 spectral bands.
-* Testing the approach on other geostationary satellites.
-* Exploring transformer-based temporal architectures.
-* Improving physical consistency constraints.
-* Extending the model to uncertainty-aware prediction.
-* Evaluating the approach on rapidly evolving severe-weather systems.
-* Investigating real-time operational deployment.
-
----
-
-# Technology Stack
-
-| Category            | Technology                        |
-| ------------------- | --------------------------------- |
-| Programming         | Python                            |
-| Deep Learning       | PyTorch                           |
-| Satellite Data      | GOES-16 ABI                       |
-| Data Access         | goes2go / NOAA AWS                |
-| Image Processing    | OpenCV, scikit-image              |
-| Numerical Computing | NumPy                             |
-| Data Processing     | Pandas, Xarray                    |
-| Visualization       | Matplotlib                        |
-| Model               | U-Net / ResUNet / Attention U-Net |
-| Motion Estimation   | TV-L1 Optical Flow                |
-
----
-
-# Project Highlights
-
 ```text
-GOES-16 Satellite Data
-        ↓
-Temporal Triplet Construction
-        ↓
-Optical Flow Initialization
-        ↓
-6-Channel U-Net
-        ↓
-Residual Refinement
-        ↓
-Intermediate Frame Reconstruction
-        ↓
-Image + Cloud + Tracking Evaluation
+Multi-Day Dataset
+       ↓
+Multi-Season Training
+       ↓
+Additional Spectral Bands
+       ↓
+Cross-Satellite Evaluation
+       ↓
+Transformer-Based Temporal Models
+       ↓
+Uncertainty-Aware Reconstruction
+       ↓
+Real-Time Deployment
 ```
 
-The project therefore evaluates the reconstruction at multiple levels:
-
-```text
-Pixel Level
-    ↓
-Image Quality
-    ↓
-Cloud Detection
-    ↓
-Cloud Motion Tracking
-    ↓
-Physical Consistency
-```
+Additional directions include evaluating rapidly evolving severe-weather systems and improving physical-consistency constraints.
 
 ---
 
-# Research Contribution
+# 26. Research Contribution
 
-The project focuses on more than producing visually plausible satellite images.
-
-The reconstructed intermediate frames are evaluated for their usefulness in downstream atmospheric analysis.
+This project explores temporal super-resolution of geostationary satellite observations using a combination of motion estimation and deep learning.
 
 The overall framework connects:
 
 ```text
 Satellite Observation
         ↓
-Temporal Reconstruction
+Motion Estimation
         ↓
-Image Quality
+Learned Refinement
         ↓
-Atmospheric Feature Detection
+Intermediate Reconstruction
         ↓
-Cloud Motion Analysis
+Image Evaluation
+        ↓
+Atmospheric Feature Evaluation
 ```
 
-This provides a broader evaluation of whether temporal super-resolution can improve the effective usability of geostationary satellite observations.
+The central idea is to use the information contained in surrounding satellite observations to estimate an atmospheric state that was not directly observed.
+
+---
+
+# 27. Project Highlights
+
+| Component              | Implementation                    |
+| ---------------------- | --------------------------------- |
+| Satellite              | GOES-16                           |
+| Instrument             | ABI                               |
+| Spectral Bands         | 13 and 9                          |
+| Task                   | Intermediate Frame Reconstruction |
+| Main Model             | Residual U-Net                    |
+| Input                  | 6 channels                        |
+| Output                 | 2 channels                        |
+| Patch Size             | 256 × 256                         |
+| Total Triplets         | 21,766                            |
+| Test Samples           | 3,207                             |
+| Reconstruction Metrics | MSE, PSNR, SSIM                   |
+| Downstream Task        | Cloud Detection                   |
+| Motion Evaluation      | Cloud Tracking                    |
+| Motion Initialization  | TV-L1 Optical Flow                |
+
+---
+
+# 28. Reproducibility
+
+The complete workflow can be summarized as:
+
+```text
+Acquire GOES-16 Data
+        ↓
+Build Temporal Triplets
+        ↓
+Extract and Filter Patches
+        ↓
+Train Reconstruction Model
+        ↓
+Generate Intermediate Frames
+        ↓
+Evaluate PSNR / SSIM
+        ↓
+Evaluate Cloud Detection
+        ↓
+Evaluate Cloud Tracking
+        ↓
+Generate Visual Comparisons
+```
+
+The repository separates the data preparation, model, training, evaluation, and demonstration components so that each stage can be inspected independently.
+
+---
+
+# 29. Conclusion
+
+This project investigates whether deep learning can increase the effective temporal resolution of geostationary satellite imagery by reconstructing an intermediate observation between two known frames.
+
+The proposed framework combines:
+
+```text
+GOES-16 Observations
+        +
+TV-L1 Motion Estimation
+        +
+Residual U-Net Refinement
+        ↓
+Intermediate Satellite Reconstruction
+```
+
+The reconstructed frames are evaluated through image reconstruction metrics as well as downstream cloud detection and cloud-motion tracking.
+
+The results demonstrate the potential of learned temporal reconstruction for estimating missing intermediate observations on the evaluated GOES-16 dataset.
 
 ---
 
@@ -704,27 +913,10 @@ This provides a broader evaluation of whether temporal super-resolution can impr
 **Zohra Fakrudeen Ali**
 
 Machine Learning Project
-Geostationary Satellite Temporal Resolution Enhancement
+**Increasing Temporal Resolution of Geostationary Satellite**
 
----
 
-# Summary
-
-This project explores deep learning-based temporal interpolation for GOES-16 satellite imagery.
-
-By combining optical-flow-based motion estimation with learned residual refinement, the system reconstructs an intermediate satellite observation between two known frames.
-
-The approach is evaluated using image reconstruction metrics as well as downstream cloud detection and cloud tracking tasks.
-
-The central idea is simple:
 
 > **Instead of waiting for the next satellite observation, learn what happened between the observations.**
 
----
-
-## Project Repository
-
-```text
-https://github.com/SrimathiSubbiah/Increasing_Temporal_Resolution_Of_Geostationary_Satellite
-```
 
