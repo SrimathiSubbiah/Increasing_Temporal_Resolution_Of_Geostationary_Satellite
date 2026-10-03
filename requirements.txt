@@ -1,0 +1,11 @@
+numpy
+pandas
+matplotlib
+pillow
+opencv-python
+xarray
+netCDF4
+scikit-image
+torch
+torchvision
+goes2go

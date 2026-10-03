@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+
+.venv/
+venv/
+
+.claude/
+
+# model checkpoints -- ~10MB each, regenerate via train*.py (uncomment to track them instead, they're small enough)
+checkpoint.pt
+checkpoint_attention_unet.pt
+checkpoint_resunet.pt
+
+# raw + processed satellite data -- tens of GB, regenerate via:
+#   data/download_goes.py -> data/build_triplets.py -> data/precompute_warps.py
+data/raw_data/
+data/triplets/
+
+# large per-sample prediction dumps (npz arrays used to build the figures) --
+# regenerate via eval/evaluate_*.py. outputs/figures/ and outputs/*.json are
+# kept -- those ARE the results.
+outputs/*_predictions/
+outputs/*_midframes/
+
+.env

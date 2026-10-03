@@ -1,0 +1,64 @@
+{
+  "methods": {
+    "average": "Average Baseline",
+    "tvl1_warp": "TV-L1 Warp",
+    "unet": "U-Net Prediction",
+    "resunet": "ResUNet Prediction",
+    "attention_unet": "Attention U-Net Prediction"
+  },
+  "stats": {
+    "average": {
+      "mean_error_px": 9.137425763810143,
+      "median_error_px": 2.197077520160742,
+      "std_error_px": 19.15561722955578,
+      "p90_error_px": 21.983736652980472,
+      "mean_tracked_clouds": 5.3916015625,
+      "n_samples": 2048
+    },
+    "tvl1_warp": {
+      "mean_error_px": 17.386013431685885,
+      "median_error_px": 11.10093239004969,
+      "std_error_px": 20.57349009333667,
+      "p90_error_px": 45.14760982186371,
+      "mean_tracked_clouds": 5.3916015625,
+      "n_samples": 2048
+    },
+    "unet": {
+      "mean_error_px": 2.982701022492787,
+      "median_error_px": 0.6713098646579163,
+      "std_error_px": 8.820573192354122,
+      "p90_error_px": 6.551242114165967,
+      "mean_tracked_clouds": 5.3916015625,
+      "n_samples": 2048
+    },
+    "resunet": {
+      "mean_error_px": 3.054459875694037,
+      "median_error_px": 0.8843731228784399,
+      "std_error_px": 7.8513775288768795,
+      "p90_error_px": 6.887903211500132,
+      "mean_tracked_clouds": 5.3916015625,
+      "n_samples": 2048
+    },
+    "attention_unet": {
+      "mean_error_px": 3.418452020614418,
+      "median_error_px": 0.7971584369106275,
+      "std_error_px": 10.255729149011477,
+      "p90_error_px": 7.390764416960229,
+      "mean_tracked_clouds": 5.3916015625,
+      "n_samples": 2048
+    }
+  },
+  "win_counts": {
+    "average": 262,
+    "tvl1_warp": 34,
+    "unet": 865,
+    "resunet": 405,
+    "attention_unet": 482
+  },
+  "tie_count": 0,
+  "valid_samples": 2048,
+  "skipped_samples": 1159,
+  "bt_threshold": 0.35,
+  "min_area": 20,
+  "max_match_dist": 40.0
+}
